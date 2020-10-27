@@ -1,0 +1,99 @@
+version: '3.8'
+
+networks:
+  default:
+    external: True
+    name: infra-consul
+  traefik-public:
+    external: True
+
+volumes:
+  consul-data-1:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${BASE_VOL_PATH}consul/data/1 #NOTE needs full path (~ doesn't work)
+      o: bind
+  consul-data-2:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${BASE_VOL_PATH}consul/data/2 #NOTE needs full path (~ doesn't work)
+      o: bind
+  consul-data-3:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${BASE_VOL_PATH}consul/data/3 #NOTE needs full path (~ doesn't work)
+      o: bind
+
+services:
+  consul-client:
+    image: ${IMAGE_REPO_ROOT}library/consul:1.8.4
+    command: "agent -retry-join consul-server-bootstrap -client 0.0.0.0 -bind '{{ GetInterfaceIP \"eth0\" }}'"
+    depends_on:
+      - consul-server-bootstrap
+    deploy:
+      replicas: 2
+#      placement:
+#        max_replicas_per_node: 1
+
+  consul-server-3:
+    image: ${IMAGE_REPO_ROOT}library/consul:1.8.4
+    volumes:
+      - consul-data-3:/consul/data
+    command: "agent -server -node consul-server-3 -retry-join consul-server-bootstrap -client 0.0.0.0 -bind '{{ GetInterfaceIP \"eth0\" }}'"
+    depends_on:
+      - consul-server-bootstrap
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.consul-server-3 == true
+        max_replicas_per_node: 1
+      restart_policy:
+        condition: on-failure
+
+  consul-server-2:
+    image: ${IMAGE_REPO_ROOT}library/consul:1.8.4
+    command: "agent -server -node consul-server-2 -retry-join consul-server-bootstrap -client 0.0.0.0 -bind '{{ GetInterfaceIP \"eth0\" }}'"
+    volumes:
+      - consul-data-2:/consul/data
+    depends_on:
+      - consul-server-bootstrap
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.consul-server-2 == true
+        max_replicas_per_node: 1
+      restart_policy:
+        condition: on-failure
+
+  consul-server-bootstrap:
+    image: ${IMAGE_REPO_ROOT}library/consul:1.8.4
+    command: "agent -server -node consul-server-bootstrap -bootstrap-expect 3 -ui -client 0.0.0.0 -bind '{{ GetInterfaceIP \"eth0\" }}'"
+    volumes:
+      - consul-data-1:/consul/data
+    networks:
+      - traefik-public
+      - default
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.consul-server-1 == true
+        max_replicas_per_node: 1
+      labels:
+        - traefik.enable=true
+        - traefik.constraint-label=traefik-public
+        - traefik.docker.network=traefik-public
+        - traefik.http.routers.consul-server-1-http.rule=Host(`consul.${DOMAIN?Variable not set}`)
+        - traefik.http.routers.consul-server-1-http.entrypoints=http
+        - traefik.http.routers.consul-server-1-http.service=consul-server-1
+        - traefik.http.routers.consul-server-1-https.rule=Host(`consul.${DOMAIN?Variable not set}`)
+        - traefik.http.routers.consul-server-1-https.entrypoints=https
+        - traefik.http.routers.consul-server-1-https.tls=ture
+        - traefik.http.routers.consul-server-1-https.service=consul-server-1
+        - traefik.http.services.consul-server-1.loadbalancer.server.port=8500
+
