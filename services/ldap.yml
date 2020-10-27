@@ -28,9 +28,9 @@ services:
       - "389:389"
       - "636:636"
     environment:
-      - LDAP_ADMIN_PASSWORD=bocft
-      - LDAP_ORGANISATION=bocft
-      - LDAP_DOMAIN=bocft.local
+      - LDAP_ADMIN_PASSWORD=${LDAP_ADMIN_PASSWORD?not set}
+      - LDAP_ORGANISATION=${LDAP_ORGANISATION? Not Set LDAP_ORGANISATION}
+      - LDAP_DOMAIN=${LDAP_DOMAIN? Not Set LDAP_DOMAIN}
     volumes:
       - ldap-data:/var/lib/ldap
       - ldap-config:/etc/ldap/slapd.d
