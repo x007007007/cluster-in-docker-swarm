@@ -1,0 +1,63 @@
+version: '3.8'
+
+networks:
+  default:
+    external: True
+    name: infra-ldap
+  traefik-public:
+    external: True
+
+volumes:
+  ldap-data:
+    driver_opts:
+      type: none
+      device: ${BASE_VOL_PATH}/ldap/data #NOTE needs full path (~ doesn't work)
+      o: bind
+  ldap-config:
+    driver_opts:
+      type: none
+      device: ${BASE_VOL_PATH}/ldap/config #NOTE needs full path (~ doesn't work)
+      o: bind
+
+services:
+  ldap:
+    image: ${BASE_VOL_PATH}osixia/openldap:1.3.0
+    networks:
+      - default
+    ports:
+      - "389:389"
+      - "636:636"
+    environment:
+      - LDAP_ADMIN_PASSWORD=bocft
+      - LDAP_ORGANISATION=bocft
+      - LDAP_DOMAIN=bocft.local
+    volumes:
+      - ldap-data:/var/lib/ldap
+      - ldap-config:/etc/ldap/slapd.d
+    deploy:
+      restart_policy:
+        condition: on-failure
+  ldap-admin:
+    image: ${BASE_VOL_PATH}osixia/phpldapadmin:0.9.0
+    networks:
+      - default
+      - traefik-public
+    ports:
+      - "16443:443"
+    environment:
+      - PHPLDAPADMIN_LDAP_HOSTS=ldap
+    deploy:
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=traefik-public
+        - traefik.constraint-label=traefik-public
+        - traefik.http.middlewares.https-redirect.redirectscheme.scheme=https
+        - traefik.http.middlewares.https-redirect.redirectscheme.permanent=false
+        - traefik.http.routers.ldap-admin-http.rule=Host(`ldap-admin.${DOMAIN?Variable not set}`)
+        - traefik.http.routers.ldap-admin-http.entrypoints=http
+        - traefik.http.routers.ldap-admin-https.rule=Host(`ldap-admin.${DOMAIN?Variable not set}`)
+        - traefik.http.routers.ldap-admin-https.entrypoints=https
+        - traefik.http.routers.ldap-admin-https.tls=true
+        - traefik.http.routers.ldap-admin-https.service=ldap-admin
+        - traefik.http.services.ldap-admin.loadbalancer.server.port=443
+
